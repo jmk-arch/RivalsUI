@@ -1,7 +1,7 @@
 local httpService = game:GetService('HttpService')
 
 local SaveManager = {} do
-	SaveManager.Folder = 'LinoriaLibSettings'
+	SaveManager.Folder = 'Overlay'
 	SaveManager.Ignore = {}
 	SaveManager.Parser = {
 		Toggle = {
@@ -154,29 +154,25 @@ local SaveManager = {} do
 	end
 
 	function SaveManager:RefreshConfigList()
-		local list = listfiles(self.Folder .. '/settings')
+		self:BuildFolderTree()
+		local success, list = pcall(listfiles, self.Folder .. '/settings')
+		if not success or type(list) ~= 'table' then
+			return {}
+		end
 
+		local seen = {}
 		local out = {}
 		for i = 1, #list do
-			local file = list[i]
-			if file:sub(-5) == '.json' then
-				-- i hate this but it has to be done ...
-
-				local pos = file:find('.json', 1, true)
-				local start = pos
-
-				local char = file:sub(pos, pos)
-				while char ~= '/' and char ~= '\\' and char ~= '' do
-					pos = pos - 1
-					char = file:sub(pos, pos)
-				end
-
-				if char == '/' or char == '\\' then
-					table.insert(out, file:sub(pos + 1, start - 1))
-				end
+			local file = tostring(list[i]):gsub('\\', '/')
+			local name = file:match('([^/]+)%.json$')
+			if name and not seen[name] then
+				seen[name] = true
+				table.insert(out, name)
 			end
 		end
-		
+		table.sort(out, function(a, b)
+			return a:lower() < b:lower()
+		end)
 		return out
 	end
 
