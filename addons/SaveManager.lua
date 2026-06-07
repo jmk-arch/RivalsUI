@@ -102,6 +102,13 @@ local SaveManager = {} do
 			table.insert(data.objects, self.Parser[option.Type].Save(idx, option))
 		end	
 
+		if self.CustomSave then
+			local s, res = pcall(self.CustomSave)
+			if s and res then
+				data.custom = res
+			end
+		end
+
 		local success, encoded = pcall(httpService.JSONEncode, httpService, data)
 		if not success then
 			return false, 'failed to encode data'
@@ -126,6 +133,10 @@ local SaveManager = {} do
 			if self.Parser[option.type] then
 				task.spawn(function() self.Parser[option.type].Load(option.idx, option) end) -- task.spawn() so the config loading wont get stuck.
 			end
+		end
+
+		if decoded.custom and self.CustomLoad then
+			task.spawn(function() self.CustomLoad(decoded.custom) end)
 		end
 
 		return true
