@@ -295,12 +295,31 @@ local SaveManager = {} do
 			local name = Options.SaveManager_CommunityConfigList.Value
 			if not name then return end
 
-			local success, err = self:Load(name)
-			if not success then
-				return self.Library:Notify('Failed to load config: ' .. tostring(err))
-			end
+			local communityConfigsData
+			pcall(function()
+				if isfile("addons/CommunityConfigsData.lua") then
+					communityConfigsData = loadstring(readfile("addons/CommunityConfigsData.lua"))()
+				end
+			end)
 
-			self.Library:Notify(string.format('Loaded config %q', name))
+			if communityConfigsData and communityConfigsData[name] then
+				local decoded = communityConfigsData[name]
+				for _, option in next, decoded.objects do
+					if self.Parser[option.type] then
+						task.spawn(function() self.Parser[option.type].Load(option.idx, option) end)
+					end
+				end
+				if decoded.custom and self.CustomLoad then
+					task.spawn(function() self.CustomLoad(decoded.custom) end)
+				end
+				self.Library:Notify(string.format('Loaded community config %q', name))
+			else
+				local success, err = self:Load(name)
+				if not success then
+					return self.Library:Notify('Failed to load config: ' .. tostring(err))
+				end
+				self.Library:Notify(string.format('Loaded config %q', name))
+			end
 		end)
 
 		SaveManager:SetIgnoreIndexes({ 'SaveManager_ConfigList', 'SaveManager_ConfigName', 'SaveManager_CommunityConfigList' })
