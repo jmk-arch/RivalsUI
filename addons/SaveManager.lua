@@ -283,7 +283,27 @@ local SaveManager = {} do
 			SaveManager.AutoloadLabel:SetText('Current autoload config: ' .. name)
 		end
 
-		SaveManager:SetIgnoreIndexes({ 'SaveManager_ConfigList', 'SaveManager_ConfigName' })
+		local communitySection = tab:AddRightGroupbox('community configs')
+		
+		communitySection:AddDropdown('SaveManager_CommunityConfigList', { 
+			Text = 'config list', 
+			Values = {'[LEGIT] Rem`s Config', '[RAGE] Rem`s Config', '[Legit] Magma', '[LEGIT] Winter'}, 
+			AllowNull = true 
+		})
+
+		communitySection:AddButton('load config', function()
+			local name = Options.SaveManager_CommunityConfigList.Value
+			if not name then return end
+
+			local success, err = self:Load(name)
+			if not success then
+				return self.Library:Notify('Failed to load config: ' .. tostring(err))
+			end
+
+			self.Library:Notify(string.format('Loaded config %q', name))
+		end)
+
+		SaveManager:SetIgnoreIndexes({ 'SaveManager_ConfigList', 'SaveManager_ConfigName', 'SaveManager_CommunityConfigList' })
 	end
 
 	SaveManager:BuildFolderTree()
