@@ -13,10 +13,11 @@ local TweenService = game:GetService('TweenService');
 local Lighting = game:GetService('Lighting');
 local RenderStepped = RunService.RenderStepped;
 local LocalPlayer = Players.LocalPlayer;
+local LastTouchPosition;
 local Mouse = setmetatable({}, {
 	__index = function(_, key)
 		local inset = GuiService:GetGuiInset();
-		local location = InputService:GetMouseLocation() - inset;
+		local location = LastTouchPosition or (InputService:GetMouseLocation() - inset);
 
 		if key == 'X' then
 			return location.X;
@@ -25,6 +26,65 @@ local Mouse = setmetatable({}, {
 		end;
 	end;
 });
+
+local function IsTouchInput(Input)
+	return Input.UserInputType == Enum.UserInputType.Touch;
+end;
+
+local function IsLeftClickInput(Input)
+	return Input.UserInputType == Enum.UserInputType.MouseButton1 or IsTouchInput(Input);
+end;
+
+local function IsRightClickInput(Input)
+	return Input.UserInputType == Enum.UserInputType.MouseButton2;
+end;
+
+local function InputPosition(Input)
+	if Input and IsTouchInput(Input) then
+		LastTouchPosition = Vector2.new(Input.Position.X, Input.Position.Y);
+		return LastTouchPosition;
+	end;
+
+	return Vector2.new(Mouse.X, Mouse.Y);
+end;
+
+InputService.InputChanged:Connect(function(Input)
+	if IsTouchInput(Input) then
+		LastTouchPosition = Vector2.new(Input.Position.X, Input.Position.Y);
+	elseif Input.UserInputType == Enum.UserInputType.MouseMovement then
+		LastTouchPosition = nil;
+	end;
+end);
+
+local function InputIsDown(Input)
+	if IsTouchInput(Input) then
+		return Input.UserInputState ~= Enum.UserInputState.End and Input.UserInputState ~= Enum.UserInputState.Cancel;
+	end;
+
+	return InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1);
+end;
+
+local function GetMobileAdjustedWindow(Config)
+	if not InputService.TouchEnabled then
+		return Config.Size, Config.Position, Config.AnchorPoint;
+	end;
+
+	local Camera = workspace.CurrentCamera;
+	local ViewportSize = Camera and Camera.ViewportSize or Vector2.new(550, 600);
+	local MaxWidth = math.floor(ViewportSize.X * 0.92);
+	local MaxHeight = math.floor(ViewportSize.Y * 0.82);
+	local Width = Config.Size.X.Offset;
+	local Height = Config.Size.Y.Offset;
+
+	if Width <= 0 or Height <= 0 then
+		return Config.Size, Config.Position, Config.AnchorPoint;
+	end;
+
+	Width = math.min(Width, MaxWidth);
+	Height = math.min(Height, MaxHeight);
+
+	return UDim2.fromOffset(Width, Height), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5);
+end;
 
 local ProtectGui = protectgui or (syn and syn.protect_gui) or (function() end);
 
@@ -623,6 +683,15 @@ Library:GiveSignal(InputService.InputBegan:Connect(function(input, ...)
 			task.spawn(callback, input, ...);
 		end;
 	end;
+
+	if IsTouchInput(input) then
+		local touchCallbacks = _callbacks[Enum.UserInputType.MouseButton1];
+		if (touchCallbacks) then
+			for _, callback in pairs(touchCallbacks) do
+				task.spawn(callback, input, ...);
+			end;
+		end;
+	end;
 end));
 
 function Library:AddContextMenu(DisplayFrame, hitbox)
@@ -685,9 +754,9 @@ function Library:AddContextMenu(DisplayFrame, hitbox)
 	--ContextMenu.Inner.Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(updateMenuSize);
 
 	(hitbox or DisplayFrame).InputBegan:Connect(function(Input)
-		if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
+		if IsLeftClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
 			return ContextMenu:Hide();
-		elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
+		elseif IsRightClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
 			return ContextMenu:Show();
 		end
 	end);
@@ -754,12 +823,12 @@ function Library:AddContextMenu(DisplayFrame, hitbox)
 			{ TextColor3 = 'FontColor' }
 		);
 
-		Button.InputBegan:Connect(function(Input)
-			if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+	Button.InputBegan:Connect(function(Input)
+			if not IsLeftClickInput(Input) then
 				return
 			end
 			Callback()
-		end)
+	end)
 		return Button;
 	end
 	return ContextMenu;
@@ -1220,15 +1289,16 @@ do
 		end;
 
 		SatVibMap.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-				while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+			if IsLeftClickInput(Input) then
+				while InputIsDown(Input) do
 					local MinX = SatVibMap.AbsolutePosition.X;
 					local MaxX = MinX + SatVibMap.AbsoluteSize.X;
-					local MouseX = math.clamp(Mouse.X, MinX, MaxX);
+					local Pos = InputPosition(Input);
+					local MouseX = math.clamp(Pos.X, MinX, MaxX);
 
 					local MinY = SatVibMap.AbsolutePosition.Y;
 					local MaxY = MinY + SatVibMap.AbsoluteSize.Y;
-					local MouseY = math.clamp(Mouse.Y, MinY, MaxY);
+					local MouseY = math.clamp(Pos.Y, MinY, MaxY);
 
 					ColorPicker.Sat = (MouseX - MinX) / (MaxX - MinX);
 					ColorPicker.Vib = 1 - ((MouseY - MinY) / (MaxY - MinY));
@@ -1242,11 +1312,11 @@ do
 		end);
 
 		HueSelectorInner.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-				while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+			if IsLeftClickInput(Input) then
+				while InputIsDown(Input) do
 					local MinY = HueSelectorInner.AbsolutePosition.Y;
 					local MaxY = MinY + HueSelectorInner.AbsoluteSize.Y;
-					local MouseY = math.clamp(Mouse.Y, MinY, MaxY);
+					local MouseY = math.clamp(InputPosition(Input).Y, MinY, MaxY);
 
 					ColorPicker.Hue = ((MouseY - MinY) / (MaxY - MinY));
 					ColorPicker:Display();
@@ -1259,14 +1329,14 @@ do
 		end);
 
 		DisplayFrame.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
+			if IsLeftClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
 				if PickerFrameOuter.Visible then
 					ColorPicker:Hide()
 				else
 					--ContextMenu:Hide()
 					ColorPicker:Show()
 				end;
-			elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
+			elseif IsRightClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
 				--ContextMenu:Show()
 				ColorPicker:Hide()
 			end
@@ -1274,11 +1344,11 @@ do
 
 		if TransparencyBoxInner then
 			TransparencyBoxInner.InputBegan:Connect(function(Input)
-				if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-					while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+				if IsLeftClickInput(Input) then
+					while InputIsDown(Input) do
 						local MinX = TransparencyBoxInner.AbsolutePosition.X;
 						local MaxX = MinX + TransparencyBoxInner.AbsoluteSize.X;
-						local MouseX = math.clamp(Mouse.X, MinX, MaxX);
+						local MouseX = math.clamp(InputPosition(Input).X, MinX, MaxX);
 
 						ColorPicker.Transparency = 1 - ((MouseX - MinX) / (MaxX - MinX));
 
@@ -1937,7 +2007,7 @@ do
 					return false
 				end
 
-				if Input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+				if not IsLeftClickInput(Input) then
 					return false
 				end
 
@@ -2467,7 +2537,7 @@ do
 		end;
 
 		ToggleRegion.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
+			if IsLeftClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
 				Toggle:SetValue(not Toggle.Value) -- Why was it not like this from the start?
 				Library:AttemptSave();
 			end;
@@ -2701,13 +2771,13 @@ do
 		end
 
 		SliderInner.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
-				local mPos = Mouse.X;
+			if IsLeftClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
+				local mPos = InputPosition(Input).X;
 				local gPos = Fill.Size.X.Offset;
 				local Diff = mPos - (Fill.AbsolutePosition.X + gPos);
 
-				while InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-					local nMPos = Mouse.X;
+				while InputIsDown(Input) do
+					local nMPos = InputPosition(Input).X;
 					local nX = math.clamp(gPos + (nMPos - mPos) + Diff, 0, Slider.MaxSize);
 
 					local nValue = Slider:GetValueFromXOffset(nX);
@@ -3080,7 +3150,7 @@ do
 				end;
 
 				ClickButton.InputBegan:Connect(function(Input)
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+					if IsLeftClickInput(Input) then
 						local Try = not Selected;
 
 						if Dropdown:GetActiveValues() == 1 and (not Try) and (not Info.AllowNull) then
@@ -3197,7 +3267,7 @@ do
 		end;
 
 		DropdownButton.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1
+			if IsLeftClickInput(Input)
 				and (ListOuter.Visible or not Library:MouseIsOverOpenedFrame()) then
 				if ListOuter.Visible then
 					Dropdown:CloseDropdown();
@@ -3895,6 +3965,8 @@ function Library:CreateWindow(...)
 	if typeof(Config.Position) ~= 'UDim2' then Config.Position = UDim2.fromOffset(175, 50) end
 	if typeof(Config.Size) ~= 'UDim2' then Config.Size = UDim2.fromOffset(550, 600) end
 
+	Config.Size, Config.Position, Config.AnchorPoint = GetMobileAdjustedWindow(Config);
+
 	if Config.Center then
 		Config.AnchorPoint = Vector2.new(0.5, 0.5)
 		Config.Position = UDim2.fromScale(0.5, 0.5)
@@ -4413,7 +4485,7 @@ function Library:CreateWindow(...)
 				end;
 
 				Button.InputBegan:Connect(function(Input)
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
+					if IsLeftClickInput(Input) and not Library:MouseIsOverOpenedFrame() then
 						TabInstance:Show();
 						TabInstance:Resize();
 					end;
@@ -4458,7 +4530,7 @@ function Library:CreateWindow(...)
 		end;
 
 		TabButton.InputBegan:Connect(function(Input)
-			if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if IsLeftClickInput(Input) then
 				Tab:ShowTab();
 			end;
 		end);
